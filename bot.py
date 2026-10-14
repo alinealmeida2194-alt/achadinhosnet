@@ -490,6 +490,16 @@ def _ler_oferta(texto):
             "titulo": titulo[:150], "preco": valor, "desconto": int(desc.group(1)) if desc else 0,
             "link": link, "vendas": 0, "nota": None, "manual": True}, None
 
+def _info_canal():
+    r = _tg("getChat", chat_id=env("TELEGRAM_CHAT_ID"))
+    if not r.get("ok"):
+        return {"erro": r.get("description")}
+    c = r["result"]
+    eu = (_tg("getMe").get("result") or {}).get("id")
+    m = _tg("getChatMember", chat_id=env("TELEGRAM_CHAT_ID"), user_id=eu)
+    return {"titulo": c.get("title"), "usuario": c.get("username"), "tipo": c.get("type"),
+            "bot_no_canal": (m.get("result") or {}).get("status") or m.get("description")}
+
 def receber_fila():
     """Lê as mensagens novas do seu bot e coloca as ofertas na fila."""
     if not env("TELEGRAM_BOT_TOKEN"):
@@ -502,7 +512,9 @@ def receber_fila():
         "quando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         "ok": resp.get("ok"), "erro": resp.get("description"),
         "mensagens_novas": len(resp.get("result", []) or []),
-        "admin_cadastrado": bool(admin)})
+        "admin_cadastrado": bool(admin),
+        "bot": (_tg("getMe").get("result") or {}).get("username"),
+        "canal_configurado": _info_canal()})
     if not resp.get("ok"):
         print(f"[Telegram] erro: {resp.get('description')}")
     fila = carregar_json(FILA, [])
