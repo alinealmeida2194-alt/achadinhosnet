@@ -180,7 +180,8 @@ def imagem_publica(o):
 
 # ---------------------------------------------------------------- Postagem
 def postar_telegram(o):
-    token, chat = env("TELEGRAM_BOT_TOKEN"), env("TELEGRAM_CHAT_ID")
+    token = env("TELEGRAM_BOT_TOKEN")
+    chat = carregar_json(BASE / "canal.json", {}).get("id") or env("TELEGRAM_CHAT_ID")
     foto = o["imagem"][3:] if o["imagem"].startswith("tg:") else o["imagem"]
     r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={
         "chat_id": chat, "photo": foto,
@@ -491,12 +492,13 @@ def _ler_oferta(texto):
             "link": link, "vendas": 0, "nota": None, "manual": True}, None
 
 def _info_canal():
-    r = _tg("getChat", chat_id=env("TELEGRAM_CHAT_ID"))
+    alvo = carregar_json(BASE / "canal.json", {}).get("id") or env("TELEGRAM_CHAT_ID")
+    r = _tg("getChat", chat_id=alvo)
     if not r.get("ok"):
         return {"erro": r.get("description")}
     c = r["result"]
     eu = (_tg("getMe").get("result") or {}).get("id")
-    m = _tg("getChatMember", chat_id=env("TELEGRAM_CHAT_ID"), user_id=eu)
+    m = _tg("getChatMember", chat_id=alvo, user_id=eu)
     return {"titulo": c.get("title"), "usuario": c.get("username"), "tipo": c.get("type"),
             "bot_no_canal": (m.get("result") or {}).get("status") or m.get("description")}
 
@@ -506,7 +508,7 @@ def receber_fila():
         return
     admin = env("TELEGRAM_ADMIN_CHAT_ID")
     offset = carregar_json(FILA_OFFSET, {"offset": 0})["offset"]
-    resp = _tg("getUpdates", offset=offset, timeout=0, allowed_updates='["message"]')
+    resp = _tg("getUpdates", offset=offset, timeout=0, allowed_updates='["message","my_chat_member","channel_post"]')
     # diagnóstico salvo no repositório (sem o token), para saber se o Telegram respondeu
     salvar_json(BASE / "status_telegram.json", {
         "quando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
@@ -520,6 +522,22 @@ def receber_fila():
     fila = carregar_json(FILA, [])
     for up in resp.get("result", []):
         offset = up["update_id"] + 1
+        # o bot foi adicionado/removido de um canal: guarda o canal automaticamente
+        mcm = up.get("my_chat_member")
+        if mcm and mcm["chat"]["type"] == "channel":
+            status = mcm["new_chat_member"]["status"]
+            nome = mcm["chat"].get("title")
+            if status == "administrator":
+                salvar_json(BASE / "canal.json", {"id": mcm["chat"]["id"], "titulo": nome})
+                if admin:
+                    _tg("sendMessage", chat_id=admin, text=f"✅ Conectado ao canal \"{nome}\". As ofertas vão ser postadas lá!")
+            elif admin:
+                _tg("sendMessage", chat_id=admin, text=f"⚠️ Não sou mais administrador do canal \"{nome}\".")
+            continue
+        post = up.get("channel_post")
+        if post and not carregar_json(BASE / "canal.json", {}).get("id"):
+            salvar_json(BASE / "canal.json", {"id": post["chat"]["id"], "titulo": post["chat"].get("title")})
+            continue
         msg = up.get("message")
         if not msg or msg["chat"]["type"] != "private":
             continue
