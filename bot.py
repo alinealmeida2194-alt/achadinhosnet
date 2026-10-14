@@ -349,74 +349,128 @@ document.querySelectorAll('.card').forEach(c=>{{c.style.display=c.textContent.to
     return pasta / "index.html"
 
 # ---------------------------------------------------------------- Stories
-def _fonte(tamanho, negrito=True):
+def _fonte(tamanho, peso="Bold"):
     from PIL import ImageFont
-    nomes = (["DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf"] if negrito
-             else ["DejaVuSans.ttf", "arial.ttf", "Arial.ttf"])
-    for n in nomes:
+    candidatos = [BASE / "fonts" / f"Poppins-{peso}.ttf",
+                  "DejaVuSans-Bold.ttf" if peso == "Bold" else "DejaVuSans.ttf"]
+    for c in candidatos:
         try:
-            return ImageFont.truetype(n, tamanho)
+            return ImageFont.truetype(str(c), tamanho)
         except OSError:
             continue
     return ImageFont.load_default()
 
-def _quebrar(draw, texto, fonte, largura, max_linhas=3):
+def _quebrar(draw, texto, fonte, largura, max_linhas=2):
     palavras, linhas, atual = texto.split(), [], ""
     for p in palavras:
         teste = (atual + " " + p).strip()
         if draw.textlength(teste, font=fonte) <= largura:
             atual = teste
         else:
-            linhas.append(atual)
+            if atual:
+                linhas.append(atual)
             atual = p
     linhas.append(atual)
     if len(linhas) > max_linhas:
         linhas = linhas[:max_linhas]
-        linhas[-1] = linhas[-1].rstrip(".,") + "…"
+        ult = linhas[-1]
+        while draw.textlength(ult + "…", font=fonte) > largura and " " in ult:
+            ult = ult.rsplit(" ", 1)[0]
+        linhas[-1] = ult.rstrip(".,") + "…"
     return linhas
 
+TEMAS = {  # cor de cima, cor de baixo, destaque, texto do selo
+    "Shopee": ("#FF7A3D", "#E8361E", "#FFE14D", "#B8260F"),
+    "Mercado Livre": ("#FFF159", "#FFD000", "#2D3277", "#2D3277"),
+    "Loja": ("#7B5CFF", "#3E2BC9", "#FFE14D", "#2A1C8F"),
+}
+
 def arte_story(o, foto_bytes=None):
-    """Monta uma arte 1080x1920 para Stories e devolve o caminho do JPG."""
+    """Arte 1080x1920 para Stories, sem preço, com espaço para o link sticker."""
     from io import BytesIO
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFilter
     W, H = 1080, 1920
-    cor = env("STORY_COR", "#EE4D2D" if o["loja"] == "Shopee" else "#2D3277")
-    img = Image.new("RGB", (W, H), cor)
+    topo, base, destaque, escuro = TEMAS.get(o["loja"], TEMAS["Loja"])
+    claro_no_fundo = o["loja"] != "Mercado Livre"
+    cor_txt = "white" if claro_no_fundo else "#1B1F5E"
+
+    def rgb(h):
+        h = h.lstrip("#"); return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    # fundo em degradê
+    a, b = rgb(topo), rgb(base)
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y / H
+        d.line([(0, y), (W, y)], fill=tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)))
+    # bolhas decorativas
+    deco = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(deco)
+    for (x, y, r) in [(-120, 160, 300), (980, 520, 220), (60, 1380, 160), (1000, 1500, 260), (540, -260, 380)]:
+        dd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 28))
+    img.paste(deco, (0, 0), deco)
     d = ImageDraw.Draw(img)
 
-    # cartão branco com a foto do produto
-    d.rounded_rectangle((80, 300, W - 80, 1200), radius=48, fill="white")
-    dados_foto = imagem_bytes(o) if foto_bytes is None else foto_bytes
-    foto = Image.open(BytesIO(dados_foto)).convert("RGB")
-    foto.thumbnail((820, 820))
-    img.paste(foto, ((W - foto.width) // 2, 340 + (820 - foto.height) // 2))
+    # topo: selo "ACHADINHO DO DIA"
+    f_selo = _fonte(46, "Bold")
+    txt = "ACHADINHO DO DIA"
+    lw = d.textlength(txt, font=f_selo) + 90
+    d.rounded_rectangle(((W - lw) / 2, 255, (W + lw) / 2, 345), radius=45, fill="white")
+    d.text((W / 2, 300), txt, font=f_selo, fill=escuro, anchor="mm")
+    artigo = "na" if o["loja"] == "Shopee" else "no"
+    d.text((W / 2, 395), f"encontrado {artigo} {o['loja']}" if o["loja"] != "Loja" else "seleção especial",
+           font=_fonte(36, "Medium"), fill=cor_txt, anchor="mm")
 
-    # topo
-    d.text((W // 2, 230), f"ACHADINHO {o['loja'].upper()}", font=_fonte(64), fill="white", anchor="mm")
+    # cartão branco com sombra e a foto
+    cx0, cy0, cx1, cy1 = 90, 460, W - 90, 1360
+    sombra = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sombra).rounded_rectangle((cx0 + 10, cy0 + 30, cx1 + 10, cy1 + 30), radius=60, fill=(0, 0, 0, 90))
+    sombra = sombra.filter(ImageFilter.GaussianBlur(28))
+    img.paste(sombra, (0, 0), sombra)
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((cx0, cy0, cx1, cy1), radius=60, fill="white")
+    dados = imagem_bytes(o) if foto_bytes is None else foto_bytes
+    foto = Image.open(BytesIO(dados)).convert("RGBA")
+    foto.thumbnail((cx1 - cx0 - 80, cy1 - cy0 - 80))
+    img.paste(foto, ((W - foto.width) // 2, cy0 + (cy1 - cy0 - foto.height) // 2), foto)
 
-    # selo de desconto
-    if o["desconto"]:
-        d.ellipse((W - 330, 250, W - 60, 520), fill="#FFD400")
-        d.text((W - 195, 360), f"{o['desconto']}%", font=_fonte(84), fill="#111", anchor="mm")
-        d.text((W - 195, 435), "OFF", font=_fonte(48), fill="#111", anchor="mm")
+    # selo inclinado "OFERTA"
+    selo = Image.new("RGBA", (360, 120), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(selo)
+    sd.rounded_rectangle((0, 0, 359, 119), radius=60, fill=destaque)
+    sd.text((180, 60), "OFERTA!", font=_fonte(56, "Bold"), fill=escuro if claro_no_fundo else "white", anchor="mm")
+    selo = selo.rotate(8, expand=True, resample=Image.BICUBIC)
+    img.paste(selo, (W - selo.width - 40, cy0 - 70), selo)
+    d = ImageDraw.Draw(img)
 
-    # título e preço
-    y = 1275
-    for linha in _quebrar(d, o["titulo"], _fonte(52, False), W - 160):
-        d.text((W // 2, y), linha, font=_fonte(52, False), fill="white", anchor="mm")
-        y += 66
-    d.text((W // 2, y + 90), brl(o["preco"]), font=_fonte(130), fill="white", anchor="mm")
+    # nome do produto
+    f_tit = _fonte(52, "Bold")
+    y = 1440
+    for linha in _quebrar(d, o["titulo"], f_tit, W - 160, 2):
+        d.text((W / 2, y), linha, font=f_tit, fill=cor_txt, anchor="mm")
+        y += 68
 
-    # chamada (o link sticker não é aceito pela API, então a chamada leva ao Telegram/bio)
-    padrao = ("Toque no link acima ↑" if env("STORY_MODO", "automatico") == "manual"
-              else f"Responda {env('PALAVRA_COMENTARIO', 'QUERO')} e receba o link")
-    chamada = env("STORY_CHAMADA", padrao).replace("{numero}", str(o.get("numero", "")))
-    d.rounded_rectangle((120, 1700, W - 120, 1820), radius=60, fill="white")
-    d.text((W // 2, 1760), chamada, font=_fonte(40), fill=cor, anchor="mm")
+    # chamada + espaço para o link sticker
+    manual = env("STORY_MODO", "manual") == "manual"
+    chamada = env("STORY_CHAMADA") or ("TOQUE NO LINK E GARANTA O SEU" if manual
+                                       else f"RESPONDA {env('PALAVRA_COMENTARIO', 'QUERO')} E RECEBA O LINK")
+    d.text((W / 2, 1600), chamada.replace("{numero}", str(o.get("numero", ""))),
+           font=_fonte(40, "Bold"), fill=destaque if claro_no_fundo else escuro, anchor="mm")
+    if manual:
+        # área tracejada onde vai o link sticker
+        x0, y0, x1, y1 = 240, 1650, W - 240, 1760
+        tr = "white" if claro_no_fundo else "#1B1F5E"
+        for x in range(x0 + 40, x1 - 40, 36):
+            d.line([(x, y0), (x + 18, y0)], fill=tr, width=5)
+            d.line([(x, y1), (x + 18, y1)], fill=tr, width=5)
+        d.arc((x0, y0, x0 + 110, y1), 90, 270, fill=tr, width=5)
+        d.arc((x1 - 110, y0, x1, y1), 270, 90, fill=tr, width=5)
+        d.text((W / 2, (y0 + y1) / 2), "cole o link aqui", font=_fonte(34, "Medium"),
+               fill=(255, 255, 255) if claro_no_fundo else "#1B1F5E", anchor="mm")
 
     caminho = BASE / "stories" / f"{o['id']}.jpg"
     caminho.parent.mkdir(exist_ok=True)
-    img.save(caminho, "JPEG", quality=90)
+    img.convert("RGB").save(caminho, "JPEG", quality=92)
     return caminho
 
 def hospedar_imagem(caminho):
