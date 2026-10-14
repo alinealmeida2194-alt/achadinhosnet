@@ -493,6 +493,14 @@ def receber_fila():
     admin = env("TELEGRAM_ADMIN_CHAT_ID")
     offset = carregar_json(FILA_OFFSET, {"offset": 0})["offset"]
     resp = _tg("getUpdates", offset=offset, timeout=0, allowed_updates='["message"]')
+    # diagnóstico salvo no repositório (sem o token), para saber se o Telegram respondeu
+    salvar_json(BASE / "status_telegram.json", {
+        "quando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        "ok": resp.get("ok"), "erro": resp.get("description"),
+        "mensagens_novas": len(resp.get("result", []) or []),
+        "admin_cadastrado": bool(admin)})
+    if not resp.get("ok"):
+        print(f"[Telegram] erro: {resp.get('description')}")
     fila = carregar_json(FILA, [])
     for up in resp.get("result", []):
         offset = up["update_id"] + 1
