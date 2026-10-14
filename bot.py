@@ -151,11 +151,39 @@ def legenda_instagram(o):
             f"🔗 Ou procure o nº {o.get('numero', '')} no link da bio.\n\n"
             f"Link de afiliado. Preço sujeito a alteração.\n\n{tags}")
 
+# ---------------------------------------------------------------- Imagens
+# Fotos enviadas pelo Telegram ficam guardadas como "tg:<file_id>".
+def imagem_bytes(o):
+    img = o["imagem"]
+    if img.startswith("tg:"):
+        token = env("TELEGRAM_BOT_TOKEN")
+        info = requests.get(f"https://api.telegram.org/bot{token}/getFile",
+                            params={"file_id": img[3:]}, timeout=30).json()["result"]
+        return requests.get(f"https://api.telegram.org/file/bot{token}/{info['file_path']}", timeout=60).content
+    return requests.get(img, timeout=30, headers={"User-Agent": "Mozilla/5.0"}).content
+
+def imagem_publica(o):
+    """URL pública da foto (o Instagram exige). Fotos do Telegram sobem para o imgbb."""
+    if o.get("imagem_url"):
+        return o["imagem_url"]
+    if not o["imagem"].startswith("tg:"):
+        return o["imagem"]
+    chave = env("IMGBB_API_KEY")
+    if not chave:
+        raise RuntimeError("para postar fotos do Telegram no Instagram, cadastre IMGBB_API_KEY")
+    import base64
+    r = requests.post("https://api.imgbb.com/1/upload", data={
+        "key": chave, "image": base64.b64encode(imagem_bytes(o))}, timeout=60)
+    r.raise_for_status()
+    o["imagem_url"] = r.json()["data"]["url"]
+    return o["imagem_url"]
+
 # ---------------------------------------------------------------- Postagem
 def postar_telegram(o):
     token, chat = env("TELEGRAM_BOT_TOKEN"), env("TELEGRAM_CHAT_ID")
+    foto = o["imagem"][3:] if o["imagem"].startswith("tg:") else o["imagem"]
     r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={
-        "chat_id": chat, "photo": o["imagem"],
+        "chat_id": chat, "photo": foto,
         "caption": legenda_telegram(o), "parse_mode": "HTML"}, timeout=30)
     r.raise_for_status()
 
@@ -163,7 +191,7 @@ def postar_instagram(o):
     ig, token = env("IG_USER_ID"), env("IG_ACCESS_TOKEN")
     api = f"https://graph.facebook.com/{env('GRAPH_VERSION', 'v21.0')}/{ig}"
     r = requests.post(f"{api}/media", data={
-        "image_url": o["imagem"], "caption": legenda_instagram(o), "access_token": token}, timeout=60)
+        "image_url": imagem_publica(o), "caption": legenda_instagram(o), "access_token": token}, timeout=60)
     r.raise_for_status()
     criacao = r.json()["id"]
     for _ in range(10):  # espera o Instagram processar a imagem
@@ -287,7 +315,7 @@ def gerar_vitrine():
     cards = "\n".join(f"""
   <a class="card" href="{escape(o['link'])}" target="_blank" rel="nofollow sponsored noopener">
     <span class="num">nº {o['numero']}</span>
-    <img src="{escape(o['imagem'])}" alt="" loading="lazy">
+    {f'<img src="{escape(o["imagem"])}" alt="" loading="lazy">' if o.get('imagem') else ''}
     <span class="t">{escape(o['titulo'][:90])}</span>
     <span class="p">{brl(o['preco'])}{f' <s>-{o["desconto"]}%</s>' if o['desconto'] else ''}</span>
     <span class="b">Comprar {'na' if o['loja'] == 'Shopee' else 'no'} {escape(o['loja'])}</span>
@@ -346,7 +374,7 @@ def _quebrar(draw, texto, fonte, largura, max_linhas=3):
         linhas[-1] = linhas[-1].rstrip(".,") + "…"
     return linhas
 
-def arte_story(o, imagem_bytes=None):
+def arte_story(o, foto_bytes=None):
     """Monta uma arte 1080x1920 para Stories e devolve o caminho do JPG."""
     from io import BytesIO
     from PIL import Image, ImageDraw
@@ -357,9 +385,8 @@ def arte_story(o, imagem_bytes=None):
 
     # cartão branco com a foto do produto
     d.rounded_rectangle((80, 300, W - 80, 1200), radius=48, fill="white")
-    if imagem_bytes is None:
-        imagem_bytes = requests.get(o["imagem"], timeout=30).content
-    foto = Image.open(BytesIO(imagem_bytes)).convert("RGB")
+    dados_foto = imagem_bytes(o) if foto_bytes is None else foto_bytes
+    foto = Image.open(BytesIO(dados_foto)).convert("RGB")
     foto.thumbnail((820, 820))
     img.paste(foto, ((W - foto.width) // 2, 340 + (820 - foto.height) // 2))
 
@@ -411,7 +438,7 @@ def postar_story(o):
         url_img = hospedar_imagem(arte_story(o))
     except Exception as e:
         print(f"[Story] não deu para montar a arte ({e}); usando a foto do produto")
-    url_img = url_img or o["imagem"]
+    url_img = url_img or imagem_publica(o)
     r = requests.post(f"https://graph.facebook.com/{versao}/{ig}/media", data={
         "image_url": url_img, "media_type": "STORIES", "access_token": token}, timeout=60)
     r.raise_for_status()
@@ -425,6 +452,90 @@ def postar_story(o):
     r = requests.post(f"https://graph.facebook.com/{versao}/{ig}/media_publish",
                       data={"creation_id": criacao, "access_token": token}, timeout=60)
     r.raise_for_status()
+
+# ---------------------------------------------------------------- Fila pelo Telegram
+# Você manda para o SEU bot (no privado): foto + legenda com nome, preço e link de afiliado.
+# Ex.: "Fone Bluetooth R$ 89,90 -35% https://s.shopee.com.br/abc"
+FILA = BASE / "fila.json"
+FILA_OFFSET = BASE / "fila_offset.json"
+
+def _tg(metodo, **dados):
+    token = env("TELEGRAM_BOT_TOKEN")
+    return requests.post(f"https://api.telegram.org/bot{token}/{metodo}", data=dados, timeout=30).json()
+
+def _ler_oferta(texto):
+    import re
+    links = re.findall(r"https?://\S+", texto)
+    if not links:
+        return None, "Não achei o link. Mande a foto com legenda: nome, R$ preço e o link de afiliado."
+    link = links[-1].rstrip(").,")
+    preco = re.search(r"R\$\s*([\d.]*\d(?:,\d{1,2})?)", texto)
+    if not preco:
+        return None, "Não achei o preço. Escreva assim: R$ 89,90"
+    valor = float(preco.group(1).replace(".", "").replace(",", "."))
+    desc = re.search(r"(\d{1,2})\s*%", texto)
+    remover = links + [preco.group(0)] + ([desc.group(0)] if desc else [])
+    titulo = texto
+    for trecho in remover:
+        titulo = titulo.replace(trecho, " ")
+    titulo = re.sub(r"\s+", " ", titulo.replace("-", " ").replace("OFF", "")).strip(" -|:") or "Oferta imperdível"
+    l = link.lower()
+    loja = ("Shopee" if "shopee" in l or "shp.ee" in l else
+            "Mercado Livre" if "mercadoli" in l or "meli.la" in l or "mlb" in l else "Loja")
+    return {"id": "fila-" + hashlib.md5(link.encode()).hexdigest()[:10], "loja": loja,
+            "titulo": titulo[:150], "preco": valor, "desconto": int(desc.group(1)) if desc else 0,
+            "link": link, "vendas": 0, "nota": None, "manual": True}, None
+
+def receber_fila():
+    """Lê as mensagens novas do seu bot e coloca as ofertas na fila."""
+    if not env("TELEGRAM_BOT_TOKEN"):
+        return
+    admin = env("TELEGRAM_ADMIN_CHAT_ID")
+    offset = carregar_json(FILA_OFFSET, {"offset": 0})["offset"]
+    resp = _tg("getUpdates", offset=offset, timeout=0, allowed_updates='["message"]')
+    fila = carregar_json(FILA, [])
+    for up in resp.get("result", []):
+        offset = up["update_id"] + 1
+        msg = up.get("message")
+        if not msg or msg["chat"]["type"] != "private":
+            continue
+        chat = str(msg["chat"]["id"])
+        if not admin:
+            _tg("sendMessage", chat_id=chat, text=(
+                f"Seu ID é {chat}\n\nCadastre no GitHub o secret TELEGRAM_ADMIN_CHAT_ID com esse "
+                "número. Depois disso é só me mandar as ofertas aqui."))
+            continue
+        if chat != admin:
+            continue  # só você pode mandar ofertas
+        texto = (msg.get("caption") or msg.get("text") or "").strip()
+        if texto in ("/fila", "/start"):
+            _tg("sendMessage", chat_id=chat, text=f"📦 {len(fila)} oferta(s) na fila.\n\nPara adicionar: "
+                "mande a foto do produto com legenda: nome, R$ preço, % de desconto (opcional) e o link.")
+            continue
+        if texto == "/limpar":
+            fila = []
+            _tg("sendMessage", chat_id=chat, text="🗑️ Fila esvaziada.")
+            continue
+        oferta, erro = _ler_oferta(texto)
+        if erro:
+            _tg("sendMessage", chat_id=chat, text=f"⚠️ {erro}")
+            continue
+        if msg.get("photo"):
+            oferta["imagem"] = "tg:" + msg["photo"][-1]["file_id"]
+        elif msg.get("document", {}).get("mime_type", "").startswith("image/"):
+            oferta["imagem"] = "tg:" + msg["document"]["file_id"]
+        else:
+            _tg("sendMessage", chat_id=chat, text="⚠️ Faltou a foto. Mande a foto do produto com o texto na legenda.")
+            continue
+        if any(f["id"] == oferta["id"] for f in fila):
+            _tg("sendMessage", chat_id=chat, text="Essa oferta já está na fila 👍")
+            continue
+        fila.append(oferta)
+        _tg("sendMessage", chat_id=chat, text=(
+            f"✅ Na fila: {oferta['titulo'][:60]} — {brl(oferta['preco'])} ({oferta['loja']})\n"
+            f"📦 {len(fila)} oferta(s) aguardando. Será postada no próximo horário."))
+    salvar_json(FILA, fila)
+    salvar_json(FILA_OFFSET, {"offset": offset})
 
 # ---------------------------------------------------------------- Execução
 def carregar_hist():
@@ -451,9 +562,19 @@ def coletar():
 
 def rodar(teste=False):
     hist = carregar_hist()
-    novas = [o for o in coletar() if o["id"] not in hist]
-    novas.sort(key=lambda o: (o["desconto"], o["vendas"]), reverse=True)
-    lote = novas[: int(env("POSTS_POR_RODADA", "3"))]
+    if not teste:
+        try:
+            receber_fila()
+        except Exception as e:
+            print(f"[Fila] erro: {e}")
+    fila = [o for o in carregar_json(FILA, []) if o["id"] not in hist]
+    qtd = int(env("POSTS_POR_RODADA", "3"))
+    # primeiro o que você mandou pelo Telegram (na ordem), depois as buscas automáticas
+    lote = fila[:qtd]
+    if len(lote) < qtd and (env("SHOPEE_APP_ID") or env("ML_ACCESS_TOKEN") or (BASE / "ml_ofertas.csv").exists()):
+        novas = [o for o in coletar() if o["id"] not in hist]
+        novas.sort(key=lambda o: (o["desconto"], o["vendas"]), reverse=True)
+        lote += novas[: qtd - len(lote)]
     if not lote:
         print("Nenhuma oferta nova.")
     registro = carregar_json(OFERTAS, [])
@@ -483,10 +604,18 @@ def rodar(teste=False):
                 o["story"] = True
             hist.add(o["id"])
             HIST.write_text(json.dumps(sorted(hist)))
-            registro.append({k: o.get(k) for k in
-                             ("numero", "id", "loja", "titulo", "preco", "desconto",
-                              "imagem", "link", "ig_media_id", "story")})
+            salvo = {k: o.get(k) for k in ("numero", "id", "loja", "titulo", "preco", "desconto",
+                                             "link", "ig_media_id", "story")}
+            # a vitrine precisa de uma imagem pública
+            salvo["imagem"] = o.get("imagem_url") or ("" if o["imagem"].startswith("tg:") else o["imagem"])
+            if not salvo["imagem"] and env("IMGBB_API_KEY"):
+                try:
+                    salvo["imagem"] = imagem_publica(o)
+                except Exception:
+                    pass
+            registro.append(salvo)
             salvar_json(OFERTAS, registro)
+            salvar_json(FILA, [f for f in carregar_json(FILA, []) if f["id"] != o["id"]])
             proximo += 1
             print(f"Postado nº {o['numero']}: {o['titulo'][:60]}")
             time.sleep(20)  # espaço entre posts, evita parecer spam
@@ -515,6 +644,10 @@ if __name__ == "__main__":
             atender_instagram()
             time.sleep(300)
     elif "--responder" in sys.argv:
+        try:
+            receber_fila()
+        except Exception as e:
+            print(f"[Fila] erro: {e}")
         atender_instagram()
     elif "--vitrine" in sys.argv:
         print(gerar_vitrine())

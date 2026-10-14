@@ -29,6 +29,16 @@ Crie só as que for usar:
 Edite o arquivo `config.env` direto no site do GitHub (palavras-chave, desconto mínimo,
 quantos posts por rodada, modo da story etc.).
 
+## Mandar ofertas pelo Telegram (sem precisar da API da Shopee)
+1. Abra o seu bot no Telegram e mande qualquer mensagem. Em até 10 min ele responde com o
+   **seu ID**. Cadastre esse número no secret `TELEGRAM_ADMIN_CHAT_ID`.
+2. Para cada produto: gere o link de afiliado no app da Shopee/Mercado Livre e mande para o bot
+   **a foto do produto** com a legenda: `Nome do produto R$ 89,90 -35% https://s.shopee.com.br/xxxx`
+   (o desconto é opcional).
+3. O bot confirma "✅ Na fila" e posta nos próximos horários, na ordem em que você mandou.
+   Comandos: `/fila` mostra quantas estão esperando, `/limpar` esvazia.
+   Só o seu ID pode mandar ofertas. Para o Instagram usar essas fotos, cadastre IMGBB_API_KEY.
+
 ## 4. Ligar
 - Aba **Actions** → se pedir, clique em "I understand… enable workflows".
 - Abra **Postar ofertas** → **Run workflow** para testar na hora.
