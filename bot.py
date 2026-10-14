@@ -689,9 +689,26 @@ def rodar(teste=False):
     if not teste and registro:
         print(f"Vitrine atualizada: {gerar_vitrine()}")
 
+def status_instagram():
+    """Confere se o token do Instagram funciona e salva o resultado (sem o token)."""
+    host, versao = env("GRAPH_HOST", "graph.instagram.com"), env("GRAPH_VERSION", "v21.0")
+    r = requests.get(f"https://{host}/{versao}/me", params={
+        "fields": "user_id,username,account_type", "access_token": env("IG_ACCESS_TOKEN")}, timeout=30)
+    d = r.json()
+    salvar_json(BASE / "status_instagram.json", {
+        "quando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        "ok": r.status_code == 200, "usuario": d.get("username"), "tipo": d.get("account_type"),
+        "id_api": d.get("user_id") or d.get("id"),
+        "id_cadastrado_confere": str(d.get("user_id") or d.get("id")) == env("IG_USER_ID"),
+        "erro": (d.get("error") or {}).get("message")})
+
 def atender_instagram():
     if not env("IG_ACCESS_TOKEN"):
         return
+    try:
+        status_instagram()
+    except Exception as e:
+        print(f"[Instagram] erro no teste: {e}")
     for f in (responder_comentarios, responder_directs):
         try:
             f()
