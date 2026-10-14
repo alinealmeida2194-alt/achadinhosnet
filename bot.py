@@ -190,13 +190,13 @@ def postar_telegram(o):
 
 def postar_instagram(o):
     ig, token = env("IG_USER_ID"), env("IG_ACCESS_TOKEN")
-    api = f"https://graph.facebook.com/{env('GRAPH_VERSION', 'v21.0')}/{ig}"
+    api = f"https://{env('GRAPH_HOST', 'graph.instagram.com')}/{env('GRAPH_VERSION', 'v21.0')}/{ig}"
     r = requests.post(f"{api}/media", data={
         "image_url": imagem_publica(o), "caption": legenda_instagram(o), "access_token": token}, timeout=60)
     r.raise_for_status()
     criacao = r.json()["id"]
     for _ in range(10):  # espera o Instagram processar a imagem
-        s = requests.get(f"https://graph.facebook.com/{env('GRAPH_VERSION', 'v21.0')}/{criacao}",
+        s = requests.get(f"https://{env('GRAPH_HOST', 'graph.instagram.com')}/{env('GRAPH_VERSION', 'v21.0')}/{criacao}",
                          params={"fields": "status_code", "access_token": token}, timeout=30).json()
         if s.get("status_code") == "FINISHED":
             break
@@ -221,7 +221,7 @@ def salvar_json(arq, dados):
 def responder_comentarios():
     """Lê comentários dos posts recentes e manda o link no direct (resposta privada)."""
     token, versao = env("IG_ACCESS_TOKEN"), env("GRAPH_VERSION", "v21.0")
-    host = env("GRAPH_HOST", "graph.facebook.com")
+    host = env("GRAPH_HOST", "graph.instagram.com")
     remetente = env("IG_MENSAGENS_ID") or env("IG_USER_ID")
     palavra = env("PALAVRA_COMENTARIO", "QUERO").lower()
     ofertas = [o for o in carregar_json(OFERTAS, []) if o.get("ig_media_id")][-30:]
@@ -261,7 +261,7 @@ def responder_directs():
     com a palavra-chave envia a oferta da última Story."""
     import re
     token, versao = env("IG_ACCESS_TOKEN"), env("GRAPH_VERSION", "v21.0")
-    host = env("GRAPH_HOST", "graph.facebook.com")
+    host = env("GRAPH_HOST", "graph.instagram.com")
     conta = env("IG_MENSAGENS_ID") or env("IG_USER_ID")
     palavra = env("PALAVRA_COMENTARIO", "QUERO").lower()
     ofertas = carregar_json(OFERTAS, [])
@@ -440,17 +440,17 @@ def postar_story(o):
     except Exception as e:
         print(f"[Story] não deu para montar a arte ({e}); usando a foto do produto")
     url_img = url_img or imagem_publica(o)
-    r = requests.post(f"https://graph.facebook.com/{versao}/{ig}/media", data={
+    r = requests.post(f"https://{env('GRAPH_HOST', 'graph.instagram.com')}/{versao}/{ig}/media", data={
         "image_url": url_img, "media_type": "STORIES", "access_token": token}, timeout=60)
     r.raise_for_status()
     criacao = r.json()["id"]
     for _ in range(10):
-        s = requests.get(f"https://graph.facebook.com/{versao}/{criacao}",
+        s = requests.get(f"https://{env('GRAPH_HOST', 'graph.instagram.com')}/{versao}/{criacao}",
                          params={"fields": "status_code", "access_token": token}, timeout=30).json()
         if s.get("status_code") == "FINISHED":
             break
         time.sleep(5)
-    r = requests.post(f"https://graph.facebook.com/{versao}/{ig}/media_publish",
+    r = requests.post(f"https://{env('GRAPH_HOST', 'graph.instagram.com')}/{versao}/{ig}/media_publish",
                       data={"creation_id": criacao, "access_token": token}, timeout=60)
     r.raise_for_status()
 
