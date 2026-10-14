@@ -1,9 +1,9 @@
 {
- "quando": "2026-10-14 22:01:50 UTC",
+ "quando": "2026-10-14 22:05:48 UTC",
  "ok": true,
  "erro": null,
  "mensagens_novas": 0,
- "admin_cadastrado": false,
+ "admin_cadastrado": true,
  "bot": "achadinhossnetbot",
  "canal_configurado": {
   "titulo": "Achadinhos Net",
