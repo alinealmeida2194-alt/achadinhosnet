@@ -507,6 +507,8 @@ def receber_fila():
     if not env("TELEGRAM_BOT_TOKEN"):
         return
     admin = env("TELEGRAM_ADMIN_CHAT_ID")
+    if not admin.lstrip("-").isdigit():
+        admin = ""  # valor inválido (ex.: colaram o token): volta a informar o ID
     offset = carregar_json(FILA_OFFSET, {"offset": 0})["offset"]
     resp = _tg("getUpdates", offset=offset, timeout=0, allowed_updates='["message","my_chat_member","channel_post"]')
     # diagnóstico salvo no repositório (sem o token), para saber se o Telegram respondeu
