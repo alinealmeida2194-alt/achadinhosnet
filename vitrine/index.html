@@ -1,0 +1,29 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Achadinhos</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#f4f4f6;color:#111}
+header{padding:20px 16px 8px;text-align:center}h1{margin:0;font-size:22px}
+input{width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:1px solid #ccc;font-size:16px;margin-top:12px}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:12px 16px 40px;max-width:900px;margin:auto}
+.card{background:#fff;border-radius:14px;padding:10px;text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:6px;position:relative;box-shadow:0 1px 3px #0001}
+.card img{width:100%;aspect-ratio:1;object-fit:contain}
+.num{position:absolute;top:8px;left:8px;background:#111;color:#fff;font-size:12px;padding:3px 8px;border-radius:99px}
+.t{font-size:13px;line-height:1.3}.p{font-weight:700;font-size:17px}.p s{color:#0a7f3f;text-decoration:none;font-size:13px}
+.b{background:#EE4D2D;color:#fff;text-align:center;padding:8px;border-radius:10px;font-size:13px;font-weight:600;margin-top:auto}
+footer{text-align:center;font-size:12px;color:#666;padding-bottom:24px}
+</style></head><body>
+<header><h1>Achadinhos</h1><input id="q" placeholder="Digite o número ou nome do produto" inputmode="search"></header>
+<main id="lista">
+  <a class="card" href="https://s.shopee.com.br/qkH0hMPm9?share_channel_code=2" target="_blank" rel="nofollow sponsored noopener">
+    <span class="num">nº 1</span>
+    
+    <span class="t">Chinelo Infantil com Elástico Antiderrapante Confortável Bebê Unissex</span>
+    <span class="p">R$ 16,90 <s>-58%</s></span>
+    <span class="b">Comprar na Shopee</span>
+  </a>
+</main>
+<footer>Links de afiliado. Preços sujeitos a alteração.</footer>
+<script>
+document.getElementById('q').addEventListener('input',e=>{const v=e.target.value.toLowerCase().replace('nº','').trim();
+document.querySelectorAll('.card').forEach(c=>{c.style.display=c.textContent.toLowerCase().includes(v)?'':'none'})});
+</script></body></html>
