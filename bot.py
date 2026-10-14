@@ -478,7 +478,11 @@ def _ler_oferta(texto):
     titulo = texto
     for trecho in remover:
         titulo = titulo.replace(trecho, " ")
-    titulo = re.sub(r"\s+", " ", titulo.replace("-", " ").replace("OFF", "")).strip(" -|:") or "Oferta imperdível"
+    for lixo in [r"(?i)confira\s+", r"(?i)com\s+de\s+desconto!?", r"(?i)somente\s*\.?",
+                 r"(?i)encontre na shopee agora!?", r"(?i)por apenas", r"(?i)no mercado livre!?",
+                 r"(?i)na shopee!?", r"(?i)\bOFF\b"]:
+        titulo = re.sub(lixo, " ", titulo)
+    titulo = re.sub(r"\s+", " ", titulo.replace(" - ", " ")).strip(" -|:!.") or "Oferta imperdível"
     l = link.lower()
     loja = ("Shopee" if "shopee" in l or "shp.ee" in l else
             "Mercado Livre" if "mercadoli" in l or "meli.la" in l or "mlb" in l else "Loja")
@@ -628,7 +632,14 @@ def rodar(teste=False):
             print(f"Postado nº {o['numero']}: {o['titulo'][:60]}")
             time.sleep(20)  # espaço entre posts, evita parecer spam
         except Exception as e:
-            print(f"Erro ao postar {o['id']}: {e}")
+            detalhe = str(e)
+            if hasattr(e, "response") and e.response is not None:
+                detalhe += " | " + e.response.text[:300]
+            detalhe = detalhe.replace(env("TELEGRAM_BOT_TOKEN") or "§", "***")
+            print(f"Erro ao postar {o['id']}: {detalhe}")
+            salvar_json(BASE / "status_postagem.json", {
+                "quando": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                "oferta": o["titulo"][:60], "erro": detalhe})
     if not teste and registro:
         print(f"Vitrine atualizada: {gerar_vitrine()}")
 
