@@ -578,6 +578,18 @@ def receber_fila():
             f"📦 {len(fila)} oferta(s) aguardando. Será postada no próximo horário."))
     salvar_json(FILA, fila)
     salvar_json(FILA_OFFSET, {"offset": offset})
+    # ainda não conectado a um canal? manda para você um botão que adiciona o bot certo
+    aviso = BASE / "aviso_canal.json"
+    if admin and not carregar_json(BASE / "canal.json", {}).get("id") and not aviso.exists():
+        info = _info_canal()
+        if not str(info.get("bot_no_canal", "")).startswith(("administrator", "creator")):
+            eu = (_tg("getMe").get("result") or {}).get("username")
+            _tg("sendMessage", chat_id=admin,
+                text="📢 Falta só me colocar no seu canal. Toque no botão abaixo, escolha o seu canal e confirme \"Adicionar como administrador\".",
+                reply_markup=json.dumps({"inline_keyboard": [[{
+                    "text": "➕ Adicionar ao meu canal",
+                    "url": f"https://t.me/{eu}?startchannel&admin=post_messages"}]]}))
+            salvar_json(aviso, {"enviado": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())})
 
 # ---------------------------------------------------------------- Execução
 def carregar_hist():
