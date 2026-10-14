@@ -36,4 +36,10 @@ jobs:
           git config user.name "bot-afiliados"
           git config user.email "bot-afiliados@users.noreply.github.com"
           git add -A .
-          git diff --cached --quiet || (git commit -m "Comentários respondidos" && git pull --rebase && git push)
+          git diff --cached --quiet && exit 0
+          git commit -m "Comentários respondidos"
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs && git push && exit 0
+            git rebase --abort 2>/dev/null; sleep 5
+          done
+          exit 1

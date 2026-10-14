@@ -483,7 +483,8 @@ def _ler_oferta(texto):
                  r"(?i)encontre na shopee agora!?", r"(?i)por apenas", r"(?i)no mercado livre!?",
                  r"(?i)na shopee!?", r"(?i)\bOFF\b"]:
         titulo = re.sub(lixo, " ", titulo)
-    titulo = re.sub(r"\s+", " ", titulo.replace(" - ", " ")).strip(" -|:!.") or "Oferta imperdível"
+    titulo = re.sub(r"\s+", " ", titulo.replace(" - ", " ")).strip(" -|:!.")
+    titulo = re.sub(r"(?i)\s+(por|de|com|a partir de)$", "", titulo).strip() or "Oferta imperdível"
     l = link.lower()
     loja = ("Shopee" if "shopee" in l or "shp.ee" in l else
             "Mercado Livre" if "mercadoli" in l or "meli.la" in l or "mlb" in l else "Loja")
