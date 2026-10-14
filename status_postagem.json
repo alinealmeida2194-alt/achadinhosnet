@@ -1,0 +1,5 @@
+{
+ "quando": "2026-10-14 21:09:44 UTC",
+ "oferta": "Chinelo Infantil com Elástico Antiderrapante Confortável Beb",
+ "erro": "400 Client Error: Bad Request for url: https://api.telegram.org/bot***/sendPhoto | {\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}"
+}
