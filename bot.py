@@ -127,13 +127,16 @@ def ofertas_ml_csv():
 
 # ---------------------------------------------------------------- Legendas
 def brl(v):
+    if v is None:
+        return ""
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def legenda_telegram(o):
     linhas = [f"🔥 <b>{o['titulo'][:120]}</b>", ""]
     if o["desconto"]:
         linhas.append(f"🏷️ {o['desconto']}% OFF")
-    linhas.append(f"💰 <b>{brl(o['preco'])}</b>")
+    if o.get("preco"):
+        linhas.append(f"💰 <b>{brl(o['preco'])}</b>")
     if o["nota"]:
         linhas.append(f"⭐ {float(o['nota']):.1f}  |  {o['vendas']} vendidos")
     linhas += ["", f"🛒 {o['loja']}: {o['link']}", "", "<i>Preço sujeito a alteração.</i>"]
@@ -379,94 +382,190 @@ def _quebrar(draw, texto, fonte, largura, max_linhas=2):
         linhas[-1] = ult.rstrip(".,") + "…"
     return linhas
 
-TEMAS = {  # cor de cima, cor de baixo, destaque, texto do selo
-    "Shopee": ("#FF7A3D", "#E8361E", "#FFE14D", "#B8260F"),
-    "Mercado Livre": ("#FFF159", "#FFD000", "#2D3277", "#2D3277"),
-    "Loja": ("#7B5CFF", "#3E2BC9", "#FFE14D", "#2A1C8F"),
+TEMAS = {  # véu do fundo, cor forte, cor escura, destaque (amarelo), fundo dos cartões
+    "rosa":    ("#FFE3EC", "#F2478D", "#8E1650", "#FFE45C", "#FFF5F8"),
+    "laranja": ("#FFE9DC", "#F25A24", "#8A2A0B", "#FFE45C", "#FFF7F2"),
+    "azul":    ("#E2EEFF", "#2F6BFF", "#14306E", "#FFE45C", "#F5F9FF"),
+    "verde":   ("#E0F6EA", "#1FA866", "#0B5232", "#FFE45C", "#F4FCF7"),
+    "lilas":   ("#EFE6FF", "#8B5CF6", "#4A1D96", "#FFE45C", "#F8F4FF"),
 }
 
+def _rgb(h, a=255):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (a,)
+
+def _coracao(d, cx, cy, r, cor):
+    d.ellipse((cx - r, cy - r, cx, cy), fill=cor)
+    d.ellipse((cx, cy - r, cx + r, cy), fill=cor)
+    d.polygon([(cx - r + 2, cy - r / 2 + 6), (cx + r - 2, cy - r / 2 + 6), (cx, cy + r)], fill=cor)
+
+def _check(d, cx, cy, r, cor, largura=8):
+    d.line([(cx - r * .45, cy), (cx - r * .1, cy + r * .35), (cx + r * .5, cy - r * .35)],
+           fill=cor, width=largura, joint="curve")
+
+def _icone_caminhao(d, x, y, cor):
+    d.rounded_rectangle((x, y + 6, x + 46, y + 38), radius=5, outline=cor, width=5)
+    d.polygon([(x + 46, y + 16), (x + 64, y + 16), (x + 74, y + 28), (x + 74, y + 38), (x + 46, y + 38)], outline=cor, width=5)
+    for cx in (x + 16, x + 60):
+        d.ellipse((cx - 9, y + 32, cx + 9, y + 50), fill="white", outline=cor, width=5)
+
+def _icone_escudo(d, x, y, cor):
+    d.polygon([(x + 25, y), (x + 50, y + 9), (x + 47, y + 34), (x + 25, y + 52), (x + 3, y + 34), (x, y + 9)], outline=cor, width=5)
+    _check(d, x + 25, y + 24, 22, cor, 5)
+
+def _icone_cartao(d, x, y, cor):
+    d.rounded_rectangle((x, y + 6, x + 66, y + 48), radius=7, outline=cor, width=5)
+    d.line([(x, y + 18), (x + 66, y + 18)], fill=cor, width=6)
+    d.line([(x + 10, y + 36), (x + 28, y + 36)], fill=cor, width=5)
+
+def _icone_link(img, cx, cy, cor):
+    from PIL import Image, ImageDraw
+    t = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+    td = ImageDraw.Draw(t)
+    td.rounded_rectangle((14, 42, 64, 78), radius=18, outline=cor, width=9)
+    td.rounded_rectangle((56, 42, 106, 78), radius=18, outline=cor, width=9)
+    t = t.rotate(-40, resample=Image.BICUBIC)
+    img.alpha_composite(t, (int(cx - 60), int(cy - 60)))
+
+def _cortar_cobrir(foto, w, h):
+    from PIL import ImageOps
+    return ImageOps.fit(foto, (w, h), centering=(0.5, 0.5))
+
+def _texto_ajustado(d, texto, peso, tamanho_max, largura, minimo=40):
+    t = tamanho_max
+    while t > minimo and d.textlength(texto, font=_fonte(t, peso)) > largura:
+        t -= 4
+    return _fonte(t, peso)
+
 def arte_story(o, foto_bytes=None):
-    """Arte 1080x1920 para Stories, sem preço, com espaço para o link sticker."""
+    """Story 1080x1920 no estilo 'achadinho': sem preço e com botão para o link sticker."""
     from io import BytesIO
     from PIL import Image, ImageDraw, ImageFilter
     W, H = 1080, 1920
-    topo, base, destaque, escuro = TEMAS.get(o["loja"], TEMAS["Loja"])
-    claro_no_fundo = o["loja"] != "Mercado Livre"
-    cor_txt = "white" if claro_no_fundo else "#1B1F5E"
-
-    def rgb(h):
-        h = h.lstrip("#"); return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-    # fundo em degradê
-    a, b = rgb(topo), rgb(base)
-    img = Image.new("RGB", (W, H))
-    d = ImageDraw.Draw(img)
-    for y in range(H):
-        t = y / H
-        d.line([(0, y), (W, y)], fill=tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)))
-    # bolhas decorativas
-    deco = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    dd = ImageDraw.Draw(deco)
-    for (x, y, r) in [(-120, 160, 300), (980, 520, 220), (60, 1380, 160), (1000, 1500, 260), (540, -260, 380)]:
-        dd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 28))
-    img.paste(deco, (0, 0), deco)
-    d = ImageDraw.Draw(img)
-
-    # topo: selo "ACHADINHO DO DIA"
-    f_selo = _fonte(46, "Bold")
-    txt = "ACHADINHO DO DIA"
-    lw = d.textlength(txt, font=f_selo) + 90
-    d.rounded_rectangle(((W - lw) / 2, 255, (W + lw) / 2, 345), radius=45, fill="white")
-    d.text((W / 2, 300), txt, font=f_selo, fill=escuro, anchor="mm")
-    artigo = "na" if o["loja"] == "Shopee" else "no"
-    d.text((W / 2, 395), f"encontrado {artigo} {o['loja']}" if o["loja"] != "Loja" else "seleção especial",
-           font=_fonte(36, "Medium"), fill=cor_txt, anchor="mm")
-
-    # cartão branco com sombra e a foto
-    cx0, cy0, cx1, cy1 = 90, 460, W - 90, 1360
-    sombra = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(sombra).rounded_rectangle((cx0 + 10, cy0 + 30, cx1 + 10, cy1 + 30), radius=60, fill=(0, 0, 0, 90))
-    sombra = sombra.filter(ImageFilter.GaussianBlur(28))
-    img.paste(sombra, (0, 0), sombra)
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((cx0, cy0, cx1, cy1), radius=60, fill="white")
+    veu, forte, escura, amarelo, cartao = TEMAS.get(env("STORY_TEMA", "rosa"), TEMAS["rosa"])
     dados = imagem_bytes(o) if foto_bytes is None else foto_bytes
     foto = Image.open(BytesIO(dados)).convert("RGBA")
-    foto.thumbnail((cx1 - cx0 - 80, cy1 - cy0 - 80))
-    img.paste(foto, ((W - foto.width) // 2, cy0 + (cy1 - cy0 - foto.height) // 2), foto)
 
-    # selo inclinado "OFERTA"
-    selo = Image.new("RGBA", (360, 120), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(selo)
-    sd.rounded_rectangle((0, 0, 359, 119), radius=60, fill=destaque)
-    sd.text((180, 60), "OFERTA!", font=_fonte(56, "Bold"), fill=escuro if claro_no_fundo else "white", anchor="mm")
-    selo = selo.rotate(8, expand=True, resample=Image.BICUBIC)
-    img.paste(selo, (W - selo.width - 40, cy0 - 70), selo)
+    # fundo: a própria foto desfocada + véu colorido + degradê para baixo
+    img = _cortar_cobrir(foto.convert("RGB"), W, H).filter(ImageFilter.GaussianBlur(30)).convert("RGBA")
+    img.alpha_composite(Image.new("RGBA", (W, H), _rgb(veu, 170)))
+    grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(grad)
+    for y in range(1100, H):
+        gd.line([(0, y), (W, y)], fill=_rgb(veu, int(255 * min(1, (y - 1100) / 380))))
+    img.alpha_composite(grad)
     d = ImageDraw.Draw(img)
 
-    # nome do produto
-    f_tit = _fonte(52, "Bold")
-    y = 1440
-    for linha in _quebrar(d, o["titulo"], f_tit, W - 160, 2):
-        d.text((W / 2, y), linha, font=f_tit, fill=cor_txt, anchor="mm")
-        y += 68
+    # título: faixa "pincelada" + ACHADINHO + categoria
+    faixa = Image.new("RGBA", (980, 330), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(faixa)
+    fd.rounded_rectangle((20, 20, 960, 310), radius=70, fill=_rgb(forte, 235))
+    for i, (x, y, r) in enumerate([(40, 60, 40), (950, 250, 46), (930, 40, 30), (60, 290, 34)]):
+        fd.ellipse((x - r, y - r, x + r, y + r), fill=_rgb(forte, 235))
+    faixa = faixa.rotate(3, resample=Image.BICUBIC, expand=False)
+    img.alpha_composite(faixa, (50, 175))
+    d = ImageDraw.Draw(img)
+    f1 = _texto_ajustado(d, "ACHADINHO", "Bold", 150, 880)
+    d.text((W / 2 + 6, 282), "ACHADINHO", font=f1, fill=_rgb(escura), anchor="mm")
+    d.text((W / 2, 276), "ACHADINHO", font=f1, fill="white", anchor="mm",
+           stroke_width=10, stroke_fill=_rgb(escura))
+    cat = (o.get("categoria") or "do dia").replace("_", " ").upper()
+    f2 = _texto_ajustado(d, cat, "Bold", 130, 820)
+    d.text((W / 2, 412), cat, font=f2, fill=_rgb(amarelo), anchor="mm",
+           stroke_width=10, stroke_fill=_rgb(escura))
+    _coracao(d, 105, 175, 34, "white")
+    _coracao(d, 990, 470, 30, _rgb(forte))
+    for (x1, y1, x2, y2) in [(150, 120, 120, 80), (195, 105, 190, 60), (235, 115, 255, 75)]:
+        d.line([(x1, y1), (x2, y2)], fill=_rgb(escura), width=8)
 
-    # chamada + espaço para o link sticker
+    # nome do produto numa faixa branca
+    f_nome = _fonte(44, "Medium")
+    nome = _quebrar(d, o["titulo"], f_nome, 860, 1)[0]
+    lw = min(d.textlength(nome, font=f_nome) + 110, 980)
+    d.rounded_rectangle(((W - lw) / 2, 505, (W + lw) / 2, 590), radius=42, fill=_rgb(cartao))
+    d.text((W / 2, 548), nome, font=f_nome, fill=_rgb(escura), anchor="mm")
+
+    # quadrinhos: fotos extras e/ou benefícios
+    extras = []
+    for ref in (o.get("fotos_extras") or [])[:3]:
+        try:
+            extras.append(Image.open(BytesIO(imagem_bytes({"imagem": ref}))).convert("RGB"))
+        except Exception:
+            pass
+    benef = list(o.get("beneficios") or [])
+    tem_quadros = bool(extras or benef)
+
+    # foto principal
+    cx0, cy0, cx1 = 60, 625, W - 60
+    cy1 = 1215 if tem_quadros else 1470
+    sombra = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sombra).rounded_rectangle((cx0 + 8, cy0 + 24, cx1 + 8, cy1 + 24), radius=56, fill=(80, 20, 50, 90))
+    img.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(26)))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((cx0, cy0, cx1, cy1), radius=56, fill="white")
+    principal = foto.copy()
+    principal.thumbnail((cx1 - cx0 - 60, cy1 - cy0 - 60))
+    img.alpha_composite(principal, ((W - principal.width) // 2, cy0 + (cy1 - cy0 - principal.height) // 2))
+    d = ImageDraw.Draw(img)
+
+    if tem_quadros:
+        n = max(len(extras), len(benef), 1)
+        n = min(n, 3)
+        gap, y0, y1 = 24, 1245, 1490
+        larg = (W - 120 - gap * (n - 1)) / n
+        for i in range(n):
+            x0 = 60 + i * (larg + gap)
+            d.rounded_rectangle((x0, y0, x0 + larg, y1), radius=34, fill=_rgb(cartao), outline="white", width=4)
+            texto = benef[i] if i < len(benef) else ""
+            if i < len(extras):
+                area_h = (y1 - y0) - (80 if texto else 24)
+                mini = _cortar_cobrir(extras[i], int(larg - 24), int(area_h - 12))
+                masc = Image.new("L", mini.size, 0)
+                ImageDraw.Draw(masc).rounded_rectangle((0, 0, mini.width - 1, mini.height - 1), radius=24, fill=255)
+                img.paste(mini, (int(x0 + 12), y0 + 12), masc)
+                d = ImageDraw.Draw(img)
+                ty = y0 + area_h + 32
+            else:
+                cyi = y0 + 82
+                d.ellipse((x0 + larg / 2 - 56, cyi - 56, x0 + larg / 2 + 56, cyi + 56), fill=_rgb(forte))
+                _check(d, x0 + larg / 2, cyi + 4, 56, "white", 11)
+                ty = y0 + 182
+            if texto:
+                fb = _fonte(32, "Bold")
+                for k, lin in enumerate(_quebrar(d, texto, fb, larg - 30, 2)):
+                    d.text((x0 + larg / 2, ty + k * 38), lin, font=fb, fill=_rgb(escura), anchor="mm")
+
+    # botão do link (o link sticker vai em cima dele)
+    by0, by1 = 1520, 1665
+    sombra = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sombra).rounded_rectangle((90, by0 + 14, W - 90, by1 + 14), radius=72, fill=(120, 20, 60, 110))
+    img.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(14)))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((90, by0, W - 90, by1), radius=72, fill=_rgb(forte))
+    _icone_link(img, 190, (by0 + by1) / 2, "white")
+    d = ImageDraw.Draw(img)
     manual = env("STORY_MODO", "manual") == "manual"
-    chamada = env("STORY_CHAMADA") or ("TOQUE NO LINK E GARANTA O SEU" if manual
-                                       else f"RESPONDA {env('PALAVRA_COMENTARIO', 'QUERO')} E RECEBA O LINK")
-    d.text((W / 2, 1600), chamada.replace("{numero}", str(o.get("numero", ""))),
-           font=_fonte(40, "Bold"), fill=destaque if claro_no_fundo else escuro, anchor="mm")
-    if manual:
-        # área tracejada onde vai o link sticker
-        x0, y0, x1, y1 = 240, 1650, W - 240, 1760
-        tr = "white" if claro_no_fundo else "#1B1F5E"
-        for x in range(x0 + 40, x1 - 40, 36):
-            d.line([(x, y0), (x + 18, y0)], fill=tr, width=5)
-            d.line([(x, y1), (x + 18, y1)], fill=tr, width=5)
-        d.arc((x0, y0, x0 + 110, y1), 90, 270, fill=tr, width=5)
-        d.arc((x1 - 110, y0, x1, y1), 270, 90, fill=tr, width=5)
-        d.text((W / 2, (y0 + y1) / 2), "cole o link aqui", font=_fonte(34, "Medium"),
-               fill=(255, 255, 255) if claro_no_fundo else "#1B1F5E", anchor="mm")
+    l1, l2 = (("CLIQUE AQUI", "PARA GARANTIR O SEU") if manual
+              else (f"RESPONDA {env('PALAVRA_COMENTARIO', 'QUERO')}", "E RECEBA O LINK"))
+    if env("STORY_CHAMADA"):
+        partes = env("STORY_CHAMADA").split("|")
+        l1, l2 = partes[0], (partes[1] if len(partes) > 1 else "")
+    d.text((W / 2 + 40, by0 + 50), l1, font=_fonte(50, "Bold"), fill="white", anchor="mm")
+    d.text((W / 2 + 40, by0 + 102), l2, font=_fonte(44, "Bold"), fill="white", anchor="mm")
+    for (x1, y1, x2, y2) in [(948, by0 - 6, 960, by0 - 36), (985, by0 + 10, 1012, by0 - 12), (995, by0 + 46, 1030, by0 + 40)]:
+        d.line([(x1, y1), (x2, y2)], fill=_rgb(escura), width=7)
+
+    # rodapé de confiança
+    fy = 1712
+    fr = _fonte(28, "Medium")
+    itens = [(_icone_caminhao, "Entrega rápida", 84), (_icone_escudo, "Compra segura", 62), (_icone_cartao, "Cartão ou Pix", 78)]
+    larguras = [ic_w + d.textlength(txt, font=fr) for _, txt, ic_w in itens]
+    espaco = (W - 80 - sum(larguras)) / 2
+    x = 40
+    for (ico, txt, ic_w), lw in zip(itens, larguras):
+        ico(d, x, fy, _rgb(escura))
+        d.text((x + ic_w, fy + 26), txt, font=fr, fill=_rgb(escura), anchor="lm")
+        x += lw + espaco
 
     caminho = BASE / "stories" / f"{o['id']}.jpg"
     caminho.parent.mkdir(exist_ok=True)
@@ -520,16 +619,20 @@ def _tg(metodo, **dados):
 
 def _ler_oferta(texto):
     import re
+    linhas = texto.splitlines()
+    marcas = ("+", "✓", "✔", "•", "✅")
+    beneficios = [l.strip().lstrip("+✓✔•✅ ").strip() for l in linhas if l.strip().startswith(marcas)]
+    texto = "\n".join(l for l in linhas if not l.strip().startswith(marcas))
+    tags = re.findall(r"#(\w+)", texto)
+    texto = re.sub(r"#\w+", " ", texto)
     links = re.findall(r"https?://\S+", texto)
     if not links:
-        return None, "Não achei o link. Mande a foto com legenda: nome, R$ preço e o link de afiliado."
+        return None, "Não achei o link. Mande a foto com legenda: nome do produto e o link de afiliado."
     link = links[-1].rstrip(").,")
     preco = re.search(r"R\$\s*([\d.]*\d(?:,\d{1,2})?)", texto)
-    if not preco:
-        return None, "Não achei o preço. Escreva assim: R$ 89,90"
-    valor = float(preco.group(1).replace(".", "").replace(",", "."))
+    valor = float(preco.group(1).replace(".", "").replace(",", ".")) if preco else None
     desc = re.search(r"(\d{1,2})\s*%", texto)
-    remover = links + [preco.group(0)] + ([desc.group(0)] if desc else [])
+    remover = links + ([preco.group(0)] if preco else []) + ([desc.group(0)] if desc else [])
     titulo = texto
     for trecho in remover:
         titulo = titulo.replace(trecho, " ")
@@ -544,7 +647,9 @@ def _ler_oferta(texto):
             "Mercado Livre" if "mercadoli" in l or "meli.la" in l or "mlb" in l else "Loja")
     return {"id": "fila-" + hashlib.md5(link.encode()).hexdigest()[:10], "loja": loja,
             "titulo": titulo[:150], "preco": valor, "desconto": int(desc.group(1)) if desc else 0,
-            "link": link, "vendas": 0, "nota": None, "manual": True}, None
+            "link": link, "vendas": 0, "nota": None, "manual": True,
+            "beneficios": [b[:40] for b in beneficios[:3]],
+            "categoria": tags[0] if tags else ""}, None
 
 def _info_canal():
     alvo = carregar_json(BASE / "canal.json", {}).get("id") or env("TELEGRAM_CHAT_ID")
@@ -577,6 +682,11 @@ def receber_fila():
     if not resp.get("ok"):
         print(f"[Telegram] erro: {resp.get('description')}")
     fila = carregar_json(FILA, [])
+    albuns = {}
+    for up in resp.get("result", []):
+        m = up.get("message") or {}
+        if m.get("media_group_id") and m.get("photo"):
+            albuns.setdefault(m["media_group_id"], []).append(m["photo"][-1]["file_id"])
     for up in resp.get("result", []):
         offset = up["update_id"] + 1
         # o bot foi adicionado/removido de um canal: guarda o canal automaticamente
@@ -607,9 +717,13 @@ def receber_fila():
         if chat != admin:
             continue  # só você pode mandar ofertas
         texto = (msg.get("caption") or msg.get("text") or "").strip()
+        if msg.get("media_group_id") and not texto:
+            continue  # foto extra de um álbum: já entra junto com a foto que tem legenda
         if texto in ("/fila", "/start"):
             _tg("sendMessage", chat_id=chat, text=f"📦 {len(fila)} oferta(s) na fila.\n\nPara adicionar: "
-                "mande a foto do produto com legenda: nome, R$ preço, % de desconto (opcional) e o link.")
+                "mande a foto do produto com legenda: nome do produto e o link.\n\n"
+                "Opcional: #categoria (vira o título, ex.: #infantil) e até 3 linhas começando com + "
+                "(viram os quadrinhos de benefícios). Mande um álbum com até 4 fotos para usar as extras nos quadrinhos.")
             continue
         if texto == "/limpar":
             fila = []
@@ -621,6 +735,8 @@ def receber_fila():
             continue
         if msg.get("photo"):
             oferta["imagem"] = "tg:" + msg["photo"][-1]["file_id"]
+            grupo = albuns.get(msg.get("media_group_id"), [])
+            oferta["fotos_extras"] = ["tg:" + f for f in grupo if f != msg["photo"][-1]["file_id"]][:3]
         elif msg.get("document", {}).get("mime_type", "").startswith("image/"):
             oferta["imagem"] = "tg:" + msg["document"]["file_id"]
         else:
@@ -631,7 +747,7 @@ def receber_fila():
             continue
         fila.append(oferta)
         _tg("sendMessage", chat_id=chat, text=(
-            f"✅ Na fila: {oferta['titulo'][:60]} — {brl(oferta['preco'])} ({oferta['loja']})\n"
+            f"✅ Na fila: {oferta['titulo'][:60]}{(' — ' + brl(oferta['preco'])) if oferta.get('preco') else ''} ({oferta['loja']})\n"
             f"📦 {len(fila)} oferta(s) aguardando. Será postada no próximo horário."))
     salvar_json(FILA, fila)
     salvar_json(FILA_OFFSET, {"offset": offset})
