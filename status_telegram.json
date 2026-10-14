@@ -1,11 +1,14 @@
 {
- "quando": "2026-10-14 21:23:09 UTC",
+ "quando": "2026-10-14 21:23:39 UTC",
  "ok": true,
  "erro": null,
  "mensagens_novas": 0,
  "admin_cadastrado": true,
  "bot": "achadinhossnetbot",
  "canal_configurado": {
-  "erro": "Bad Request: chat_id is empty"
+  "titulo": "Achadinhos Net",
+  "usuario": "achadinhosnet",
+  "tipo": "channel",
+  "bot_no_canal": "Bad Request: member list is inaccessible"
  }
 }
