@@ -36,7 +36,7 @@ quantos posts por rodada, modo da story etc.).
 
 ## 5. Vitrine da bio
 **Settings → Pages → Source: Deploy from a branch → main / (root) → Save.**
-O endereço da vitrine será `https://SEU-USUARIO.github.io/achadinhos/vitrine/`.
+O endereço da vitrine será `https://SEU-USUARIO.github.io/achadinhosnet/vitrine/`.
 Coloque esse link na bio do Instagram.
 
 ## Observações
