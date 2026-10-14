@@ -1,14 +1,14 @@
 {
- "quando": "2026-10-14 22:31:55 UTC",
+ "quando": "2026-10-14 22:56:36 UTC",
  "ok": true,
  "erro": null,
- "mensagens_novas": 3,
+ "mensagens_novas": 2,
  "admin_cadastrado": true,
  "bot": "achadinhossnetbot",
  "canal_configurado": {
-  "titulo": "Achadinhos Net",
-  "usuario": "achadinhosnet",
+  "titulo": "Canal - Achadinhos",
+  "usuario": "achadinhossnet",
   "tipo": "channel",
-  "bot_no_canal": "Bad Request: member list is inaccessible"
+  "bot_no_canal": "administrator"
  }
 }
