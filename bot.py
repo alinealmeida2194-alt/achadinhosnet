@@ -555,18 +555,6 @@ def arte_story(o, foto_bytes=None):
     for (x1, y1, x2, y2) in [(948, by0 - 6, 960, by0 - 36), (985, by0 + 10, 1012, by0 - 12), (995, by0 + 46, 1030, by0 + 40)]:
         d.line([(x1, y1), (x2, y2)], fill=_rgb(escura), width=7)
 
-    # rodapé de confiança
-    fy = 1712
-    fr = _fonte(28, "Medium")
-    itens = [(_icone_caminhao, "Entrega rápida", 84), (_icone_escudo, "Compra segura", 62), (_icone_cartao, "Cartão ou Pix", 78)]
-    larguras = [ic_w + d.textlength(txt, font=fr) for _, txt, ic_w in itens]
-    espaco = (W - 80 - sum(larguras)) / 2
-    x = 40
-    for (ico, txt, ic_w), lw in zip(itens, larguras):
-        ico(d, x, fy, _rgb(escura))
-        d.text((x + ic_w, fy + 26), txt, font=fr, fill=_rgb(escura), anchor="lm")
-        x += lw + espaco
-
     caminho = BASE / "stories" / f"{o['id']}.jpg"
     caminho.parent.mkdir(exist_ok=True)
     img.convert("RGB").save(caminho, "JPEG", quality=92)
