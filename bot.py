@@ -524,14 +524,7 @@ def arte_story(o, foto_bytes=None):
     d.rounded_rectangle((90, by0, W - 90, by1), radius=72, fill=_rgb(forte))
     _icone_link(img, 190, (by0 + by1) / 2, "white")
     d = ImageDraw.Draw(img)
-    manual = env("STORY_MODO", "manual") == "manual"
-    l1, l2 = (("CLIQUE AQUI", "PARA GARANTIR O SEU") if manual
-              else (f"RESPONDA {env('PALAVRA_COMENTARIO', 'QUERO')}", "E RECEBA O LINK"))
-    if env("STORY_CHAMADA"):
-        partes = env("STORY_CHAMADA").split("|")
-        l1, l2 = partes[0], (partes[1] if len(partes) > 1 else "")
-    d.text((W / 2 + 40, by0 + 50), l1, font=_fonte(50, "Bold"), fill="white", anchor="mm")
-    d.text((W / 2 + 40, by0 + 102), l2, font=_fonte(44, "Bold"), fill="white", anchor="mm")
+    # sem texto: só o símbolo de link e o espaço livre para o adesivo de link
     for (x1, y1, x2, y2) in [(948, by0 - 6, 960, by0 - 36), (985, by0 + 10, 1012, by0 - 12), (995, by0 + 46, 1030, by0 + 40)]:
         d.line([(x1, y1), (x2, y2)], fill=_rgb(escura), width=7)
 
