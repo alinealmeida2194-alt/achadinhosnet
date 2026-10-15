@@ -1,9 +1,9 @@
 {
- "quando": "2026-10-15 15:55:10 UTC",
- "ok": true,
- "usuario": "achadinhossnet.ne",
- "tipo": "MEDIA_CREATOR",
- "id_api": "17841454799432683",
- "id_cadastrado_confere": true,
- "erro": null
+ "quando": "2026-10-15 16:29:04 UTC",
+ "ok": false,
+ "usuario": null,
+ "tipo": null,
+ "id_api": null,
+ "id_cadastrado_confere": false,
+ "erro": "API access blocked."
 }
