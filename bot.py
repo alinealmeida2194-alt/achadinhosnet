@@ -617,7 +617,8 @@ def _ler_oferta(texto):
     titulo = texto
     for trecho in remover:
         titulo = titulo.replace(trecho, " ")
-    for lixo in [r"(?i)confira\s+", r"(?i)com\s+de\s+desconto!?", r"(?i)somente\s*\.?",
+    for lixo in [r"(?i)com\s+\d+\s*%\s*de\s+desconto!?", r"(?i)\d+\s*%\s*(de\s+desconto|off)",
+                 r"(?i)confira\s+", r"(?i)com\s+de\s+desconto!?", r"(?i)somente\s*\.?",
                  r"(?i)encontre na shopee agora!?", r"(?i)por apenas", r"(?i)no mercado livre!?",
                  r"(?i)na shopee!?", r"(?i)\bOFF\b"]:
         titulo = re.sub(lixo, " ", titulo)
