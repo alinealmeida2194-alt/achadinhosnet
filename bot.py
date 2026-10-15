@@ -132,14 +132,13 @@ def brl(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def legenda_telegram(o):
-    linhas = [f"🔥 <b>{o['titulo'][:120]}</b>", ""]
-    if o["desconto"]:
-        linhas.append(f"🏷️ {o['desconto']}% OFF")
-    if o.get("preco"):
+    from html import escape
+    linhas = [f"🔥 <b>{escape(o['titulo'][:120])}</b>"]
+    for b in (o.get("beneficios") or []):
+        linhas.append(f"✅ {escape(b)}")
+    if o.get("preco") and env("MOSTRAR_PRECO", "nao") == "sim":
         linhas.append(f"💰 <b>{brl(o['preco'])}</b>")
-    if o["nota"]:
-        linhas.append(f"⭐ {float(o['nota']):.1f}  |  {o['vendas']} vendidos")
-    linhas += ["", f"🛒 {o['loja']}: {o['link']}", "", "<i>Preço sujeito a alteração.</i>"]
+    linhas += ["", f"🛒 Garanta o seu: {o['link']}"]
     return "\n".join(linhas)
 
 def legenda_instagram(o):
@@ -456,34 +455,12 @@ def arte_story(o, foto_bytes=None):
     img.alpha_composite(grad)
     d = ImageDraw.Draw(img)
 
-    # título: faixa "pincelada" + ACHADINHO + categoria
-    faixa = Image.new("RGBA", (980, 330), (0, 0, 0, 0))
-    fd = ImageDraw.Draw(faixa)
-    fd.rounded_rectangle((20, 20, 960, 310), radius=70, fill=_rgb(forte, 235))
-    for i, (x, y, r) in enumerate([(40, 60, 40), (950, 250, 46), (930, 40, 30), (60, 290, 34)]):
-        fd.ellipse((x - r, y - r, x + r, y + r), fill=_rgb(forte, 235))
-    faixa = faixa.rotate(3, resample=Image.BICUBIC, expand=False)
-    img.alpha_composite(faixa, (50, 175))
-    d = ImageDraw.Draw(img)
-    f1 = _texto_ajustado(d, "ACHADINHO", "Bold", 150, 880)
-    d.text((W / 2 + 6, 282), "ACHADINHO", font=f1, fill=_rgb(escura), anchor="mm")
-    d.text((W / 2, 276), "ACHADINHO", font=f1, fill="white", anchor="mm",
-           stroke_width=10, stroke_fill=_rgb(escura))
-    cat = (o.get("categoria") or "do dia").replace("_", " ").upper()
-    f2 = _texto_ajustado(d, cat, "Bold", 130, 820)
-    d.text((W / 2, 412), cat, font=f2, fill=_rgb(amarelo), anchor="mm",
-           stroke_width=10, stroke_fill=_rgb(escura))
-    _coracao(d, 105, 175, 34, "white")
-    _coracao(d, 990, 470, 30, _rgb(forte))
-    for (x1, y1, x2, y2) in [(150, 120, 120, 80), (195, 105, 190, 60), (235, 115, 255, 75)]:
-        d.line([(x1, y1), (x2, y2)], fill=_rgb(escura), width=8)
-
     # nome do produto numa faixa branca
     f_nome = _fonte(44, "Medium")
     nome = _quebrar(d, o["titulo"], f_nome, 860, 1)[0]
     lw = min(d.textlength(nome, font=f_nome) + 110, 980)
-    d.rounded_rectangle(((W - lw) / 2, 505, (W + lw) / 2, 590), radius=42, fill=_rgb(cartao))
-    d.text((W / 2, 548), nome, font=f_nome, fill=_rgb(escura), anchor="mm")
+    d.rounded_rectangle(((W - lw) / 2, 250, (W + lw) / 2, 335), radius=42, fill=_rgb(cartao))
+    d.text((W / 2, 293), nome, font=f_nome, fill=_rgb(escura), anchor="mm")
 
     # quadrinhos: fotos extras e/ou benefícios
     extras = []
@@ -496,16 +473,19 @@ def arte_story(o, foto_bytes=None):
     tem_quadros = bool(extras or benef)
 
     # foto principal
-    cx0, cy0, cx1 = 60, 625, W - 60
+    cx0, cy0, cx1 = 60, 370, W - 60
     cy1 = 1215 if tem_quadros else 1470
     sombra = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ImageDraw.Draw(sombra).rounded_rectangle((cx0 + 8, cy0 + 24, cx1 + 8, cy1 + 24), radius=56, fill=(80, 20, 50, 90))
     img.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(26)))
     d = ImageDraw.Draw(img)
+    # foto preenchendo o cartão inteiro, com borda branca e cantos arredondados
     d.rounded_rectangle((cx0, cy0, cx1, cy1), radius=56, fill="white")
-    principal = foto.copy()
-    principal.thumbnail((cx1 - cx0 - 60, cy1 - cy0 - 60))
-    img.alpha_composite(principal, ((W - principal.width) // 2, cy0 + (cy1 - cy0 - principal.height) // 2))
+    pw, ph = int(cx1 - cx0 - 24), int(cy1 - cy0 - 24)
+    principal = _cortar_cobrir(foto.convert("RGB"), pw, ph)
+    masc = Image.new("L", (pw, ph), 0)
+    ImageDraw.Draw(masc).rounded_rectangle((0, 0, pw - 1, ph - 1), radius=46, fill=255)
+    img.paste(principal, (cx0 + 12, cy0 + 12), masc)
     d = ImageDraw.Draw(img)
 
     if tem_quadros:
