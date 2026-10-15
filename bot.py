@@ -309,6 +309,26 @@ def story_para_postar_manual(o, caminho_arte):
             "caption": f"📲 Story pronta (nº {o['numero']})\n\nCopie o link para o sticker:\n{o['link']}"},
             files={"document": (f"story_{o['numero']}.jpg", f, "image/jpeg")}, timeout=60).raise_for_status()
 
+def texto_whatsapp(o):
+    linhas = [f"🔥 *{o['titulo'][:120]}*"]
+    for b in (o.get("beneficios") or []):
+        linhas.append(f"✅ {b}")
+    linhas += ["", f"🛒 Garanta o seu: {o['link']}"]
+    return "\n".join(linhas)
+
+def whatsapp_pronto(o):
+    """Manda para o SEU Telegram a foto + botão que abre o WhatsApp com a mensagem pronta."""
+    from urllib.parse import quote
+    token, admin = env("TELEGRAM_BOT_TOKEN"), env("TELEGRAM_ADMIN_CHAT_ID")
+    foto = o["imagem"][3:] if o["imagem"].startswith("tg:") else o["imagem"]
+    botoes = {"inline_keyboard": [[{"text": "📲 Enviar no WhatsApp",
+                                    "url": "https://wa.me/?text=" + quote(texto_whatsapp(o))}]]}
+    requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={
+        "chat_id": admin, "photo": foto,
+        "caption": f"💬 WhatsApp (nº {o.get('numero', '')})\n\nToque no botão, escolha os grupos e envie. "
+                   "Se quiser a foto junto, encaminhe esta imagem também.",
+        "reply_markup": json.dumps(botoes)}, timeout=60).raise_for_status()
+
 # ---------------------------------------------------------------- Vitrine (link da bio)
 def gerar_vitrine():
     """Gera vitrine/index.html com as ofertas numeradas e botão de compra."""
@@ -792,6 +812,11 @@ def rodar(teste=False):
             elif modo_story == "manual" and env("TELEGRAM_ADMIN_CHAT_ID"):
                 story_para_postar_manual(o, arte_story(o))
                 o["story"] = True
+            if env("WHATSAPP", "sim") == "sim" and env("TELEGRAM_ADMIN_CHAT_ID"):
+                try:
+                    whatsapp_pronto(o)
+                except Exception as e:
+                    print(f"[WhatsApp] erro: {e}")
             hist.add(o["id"])
             HIST.write_text(json.dumps(sorted(hist)))
             salvo = {k: o.get(k) for k in ("numero", "id", "loja", "titulo", "preco", "desconto",
