@@ -1,11 +1,14 @@
 {
- "quando": "2026-10-29 00:44:53 UTC",
- "ok": false,
- "erro": "Bad Gateway",
+ "quando": "2026-10-29 00:56:43 UTC",
+ "ok": true,
+ "erro": null,
  "mensagens_novas": 0,
  "admin_cadastrado": true,
- "bot": null,
+ "bot": "achadinhossnetbot",
  "canal_configurado": {
-  "erro": "Bad Gateway"
+  "titulo": "Canal - Achadinhos",
+  "usuario": "achadinhossnet",
+  "tipo": "channel",
+  "bot_no_canal": "administrator"
  }
 }
